@@ -1,0 +1,117 @@
+name:                agon
+version:             0.1.0.0
+synopsis:            HTTP benchmarking tool
+-- description:
+license:             BSD3
+author:              Travis Staton
+maintainer:          hello@travisstaton.com
+-- copyright:
+category:            Web
+build-type:          Simple
+extra-source-files:  ChangeLog.md
+cabal-version:       2.0
+
+library
+  exposed-modules:     Agon
+                       Agon.Request
+                       Agon.Stats
+  -- other-modules:
+  -- other-extensions:
+  build-depends:         base >=4.10 && <4.13
+                       , Earley ^>= 0.13
+                       , aeson ^>= 1.4
+                       , async ^>= 2.2
+                       , bytestring
+                       , concurrent-output ^>= 1.10
+                       , case-insensitive
+                       , foldl ^>= 1.4
+                       , fmt ^>= 0.6
+                       , http-client ^>= 0.5
+                       , http-client-tls ^>= 0.3
+                       , http-types ^>= 0.12
+                       , network-uri ^>= 2.6
+                       , pipes ^>= 4.3
+                       , pipes-concurrency ^>= 2.0
+                       , profunctors
+                       , text
+                       , time
+                       , random
+  default-extensions: ConstraintKinds
+                      DeriveDataTypeable
+                      DeriveFoldable
+                      DeriveFunctor
+                      DeriveGeneric
+                      DeriveTraversable
+                      FlexibleContexts
+                      FunctionalDependencies
+                      GADTs
+                      GeneralizedNewtypeDeriving
+                      LambdaCase
+                      FlexibleInstances
+                      InstanceSigs
+                      MultiParamTypeClasses
+                      MultiWayIf
+                      NoImplicitPrelude
+                      OverloadedStrings
+                      PatternSynonyms
+                      RankNTypes
+                      RecordWildCards
+                      RecursiveDo
+                      ScopedTypeVariables
+                      StandaloneDeriving
+                      TupleSections
+                      TypeFamilies
+                      TypeApplications
+                      TypeSynonymInstances
+                      ViewPatterns
+                      UnicodeSyntax
+  hs-source-dirs:      Lib
+  ghc-options:         -Wall
+  default-language:    Haskell2010
+
+executable agon
+  main-is:             Main.hs
+  hs-source-dirs:      Exec
+  default-extensions: ConstraintKinds
+                      DeriveDataTypeable
+                      DeriveFoldable
+                      DeriveFunctor
+                      DeriveGeneric
+                      DeriveTraversable
+                      FlexibleContexts
+                      FunctionalDependencies
+                      GADTs
+                      GeneralizedNewtypeDeriving
+                      LambdaCase
+                      FlexibleInstances
+                      InstanceSigs
+                      MultiParamTypeClasses
+                      MultiWayIf
+                      NoImplicitPrelude
+                      OverloadedStrings
+                      PatternSynonyms
+                      RankNTypes
+                      ScopedTypeVariables
+                      StandaloneDeriving
+                      TupleSections
+                      TypeApplications
+                      TypeFamilies
+                      TypeSynonymInstances
+                      UnicodeSyntax
+                      ViewPatterns
+
+  build-depends:       base
+                       , agon
+                       , async
+                       , http-client
+                       , pipes
+                       , text
+                       , aeson
+                       , random
+
+  default-language:    Haskell2010
+  ghc-options:         -Wall
+                       -threaded
+                       -O2
+                       -rtsopts
+                       -with-rtsopts=-N

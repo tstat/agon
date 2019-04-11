@@ -1,0 +1,8 @@
+* Agon
+**** A simple benchmarking tool with httpie like syntax
+
+***** example usage:
+#+begin_src bash
+agon --request-count 5000 --thread-count 100 POST https://foobar.com header:headerVal jsonKey=jsonVal
+#+end_src
+
