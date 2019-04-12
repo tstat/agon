@@ -86,7 +86,7 @@ stepApply (L.FoldM step start done) ψ = L.FoldM step' start done
 reporting :: IORef b -> L.Fold a b -> L.FoldM IO a b
 reporting bref φ = stepApply (L.generalize φ) (writeIORef bref)
 
-formatReport :: Report -> String
+formatReport :: Report -> Text
 formatReport Report{..} = fmt $ mconcat
   [ mkTable
     [ "requests / second"
