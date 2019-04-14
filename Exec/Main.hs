@@ -5,16 +5,12 @@ import           Prelude
 import           Agon (benchWithStreamingStats)
 import           Agon.Request (Request, parseRequests, toHttpClientRequest)
 import           Control.Monad ( (<=<) )
-import           Control.Monad.IO.Class (liftIO)
-import           Data.Foldable (foldl')
 import           Data.List (intercalate)
 import qualified Data.Text as T
-import           Text.Read (readEither)
-import           Pipes (each, yield)
-import           Pipes.Core ( (//>) )
-import           System.Environment (getArgs)
-import           System.Exit (exitFailure, exitSuccess)
 import           System.Console.GetOpt
+import           System.Environment (getArgs)
+import           System.Exit (exitFailure)
+import           Text.Read (readEither)
 
 data RunOptions
   = RunOptions
@@ -32,10 +28,6 @@ threadCount :: ∀ f. Applicative f => (Int -> f Int) -> RunOptions -> f RunOpti
 threadCount f (RunOptions a x b) = (\x' -> RunOptions a x' b) <$> f x
 threadCount _ Help = pure Help
 
-requests :: ∀ f. Applicative f => ([Request] -> f [Request]) -> RunOptions -> f RunOptions
-requests f (RunOptions a b x) = (\x' -> RunOptions a b x') <$> f x
-requests _ Help = pure Help
-
 main :: IO ()
 main = do
   (popts, extra, errs) <- getOpt RequireOrder opts <$> getArgs
@@ -44,10 +36,11 @@ main = do
   case foldr (<=<) pure popts (RunOptions 0 0 []) of
     Left err -> exitF err
     Right Help -> putStr (usageInfo "" opts)
-    Right (RunOptions n t rs) -> do
+    Right (RunOptions n t _) -> do
       rs' <- maybe (exitF "Failed to parse requests") pure $ parseRequests $ T.pack $ unwords extra
-      let prod = each (cycle rs') //> (yield <=< liftIO . toHttpClientRequest)
-      benchWithStreamingStats n t prod
+      traverse toHttpClientRequest rs' >>= \case
+        [] -> exitF "Must provide at least one request"
+        xs -> benchWithStreamingStats n t (cycle xs)
   where
     opts :: [OptDescr (RunOptions -> Either String RunOptions)]
     opts =

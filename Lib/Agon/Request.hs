@@ -92,7 +92,7 @@ reqsGrammar :: Grammar r (Prod r Text Text [Request])
 reqsGrammar = do
   rec
     g <- reqGrammar
-    a <- rule $ (:) <$> g <*> (a <|> pure [])
+    a <- rule $ ((:) <$> g <*> a) <|> pure []
   pure a
 
 reqGrammar :: Grammar r (Prod r Text Text Request)

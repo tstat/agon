@@ -2,7 +2,8 @@ module Agon.Stats
   ( Report(..)
   , RequestInfo(..)
   , reportFold
-  , reporting
+  , stepFold
+  , getFold
   , formatReport
   ) where
 
@@ -10,7 +11,6 @@ import           Prelude
 
 import qualified Control.Foldl as L
 import           Data.Coerce (coerce)
-import           Data.IORef (IORef, writeIORef)
 import           Data.Profunctor (lmap)
 import           Data.Semigroup (Min(..), Max(..))
 import           Data.Text (Text)
@@ -75,16 +75,14 @@ data Report
   }
   deriving Show
 
-stepApply :: Monad m => L.FoldM m a b -> (b -> m ()) -> L.FoldM m a b
-stepApply (L.FoldM step start done) ψ = L.FoldM step' start done
-  where
-    step' b a = do
-      v <- step b a
-      ψ =<< done v
-      pure v
+stepFold :: L.Fold a b -> a -> (b, L.Fold a b)
+stepFold (L.Fold step start done) a =
+  let st = step start a
+      b = done st
+  in (b, L.Fold step st done)
 
-reporting :: IORef b -> L.Fold a b -> L.FoldM IO a b
-reporting bref φ = stepApply (L.generalize φ) (writeIORef bref)
+getFold :: L.Fold a b -> b
+getFold (L.Fold _ start done) = done start
 
 formatReport :: Report -> Text
 formatReport Report{..} = fmt $ mconcat

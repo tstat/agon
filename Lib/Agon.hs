@@ -2,21 +2,22 @@ module Agon where
 
 import           Prelude
 
-import           Agon.Stats (RequestInfo(..), Report(..), reporting, reportFold, formatReport)
-import           Control.Concurrent (threadDelay)
+import           Agon.Stats (RequestInfo(..), Report(..), stepFold, formatReport, reportFold, getFold)
+import           Control.Concurrent
 import           Control.Concurrent.Async
-import           Control.Exception (finally)
+import           Control.Concurrent.STM
+import           Control.Exception
 import qualified Control.Foldl as L
+import qualified Control.Immortal as Immortal
 import           Control.Monad
-import           Data.Foldable (traverse_)
+import           Data.Foldable
+import           Data.Function
 import           Data.IORef
+import qualified Data.Text as T
 import           Data.Time (getCurrentTime)
 import           Network.HTTP.Client
 import           Network.HTTP.Client.TLS
 import           Network.HTTP.Types.Status (statusCode)
-import           Pipes
-import           Pipes.Concurrent
-import qualified Pipes.Prelude as Pipes
 import           System.Console.Regions
   ( ConsoleRegion, RegionLayout(Linear), displayConsoleRegions, withConsoleRegion
   , setConsoleRegion, finishConsoleRegion
@@ -24,47 +25,67 @@ import           System.Console.Regions
 
 bench
   :: IORef Report
-  -> Producer Request IO ()
+  -> TQueue HttpException
+  -> [Request]
   -> Int
   -> Int
   -> IO Report
-bench reportRef prod reqCount threadCount = do
+bench reportRef exQueue reqStream requestCount threadCount = do
   m <- newManager tlsManagerSettings { managerConnCount = threadCount }
-  (reqOutput, reqInput, reqSeal) <- spawn' $ bounded (threadCount * 10)
-  (statOutput, statInput, statSeal) <- spawn' unbounded
-  η <- async . runEffect $ prod >-> Pipes.take reqCount >-> toOutput reqOutput
-  γ <- replicateM threadCount . async . runEffect $
-    fromInput reqInput >-> worker m >-> toOutput statOutput
-  ψ <- async $ L.impurely Pipes.foldM (reporting reportRef reportFold) (fromInput statInput)
-  wait η
-  atomically reqSeal
-  traverse_ wait γ
-  atomically statSeal
-  wait ψ
-
-worker :: Manager -> Pipe Request RequestInfo IO ()
-worker m = do
-  req <- await
-  yield =<< liftIO (do
+  reqQueue :: TBQueue Request <- atomically $ newTBQueue (10 * fromIntegral threadCount)
+  statQueue :: TQueue RequestInfo <- atomically newTQueue
+  workers <- replicateM threadCount $ Immortal.create \_ -> fix \f -> do
+    req <- atomically $ readTBQueue reqQueue
     st <- getCurrentTime
-    res <- httpLbs req m
+    res <- httpLbs req m `catch` \(e :: HttpException) -> do
+      atomically $ writeTQueue exQueue e
+      throwIO e
     et <- getCurrentTime
-    pure $ RequestInfo st et (statusCode $ responseStatus res))
-  worker m
+    atomically $ writeTQueue statQueue $ RequestInfo st et (statusCode $ responseStatus res)
+    f
+  statCollector <- async $ collectStats reportRef requestCount statQueue
+  putter <- async $ (fix \f rs -> do
+                       atomically $ writeTBQueue reqQueue (head rs)
+                       f (tail rs)) reqStream
+  report <- wait statCollector
+  traverse_ Immortal.stop workers
+  cancel putter
+  pure report
+
+collectStats :: IORef Report -> Int -> TQueue RequestInfo -> IO Report
+collectStats reportRef reqCount riQueue = go reportFold reqCount
+  where
+    go :: L.Fold RequestInfo Report -> Int -> IO Report
+    go φ n
+      | n <= 0 = pure (getFold φ)
+      | otherwise = do
+          requestInfo <- atomically $ readTQueue riQueue
+          let (report, φ') = stepFold φ requestInfo
+          writeIORef reportRef report
+          go φ' (pred n)
 
 benchWithStreamingStats
   :: Int
   -> Int
-  -> Producer Request IO ()
+  -> [Request]
   -> IO ()
-benchWithStreamingStats reqCount threadCount prod = do
-  ref <- newIORef (Report Nothing 0 0 Nothing Nothing 0 0 0 0) :: IO (IORef Report)
-  α <- async $ bench ref prod reqCount threadCount
-  β <- async $ displayConsoleRegions $ do
-    displayCount ref
+benchWithStreamingStats reqCount threadCount prod = displayConsoleRegions do
+  ref :: IORef Report <- newIORef (Report Nothing 0 0 Nothing Nothing 0 0 0 0)
+  exQueue :: TQueue HttpException <- atomically newTQueue
+  α <- async $ bench ref exQueue prod reqCount threadCount
+  countThread <- async $ displayCount ref
+  errThread <- async $ displayErrors exQueue
   _ <- wait α
-  cancel β
+  cancel countThread
+  cancel errThread
   where
+    displayErrors :: TQueue HttpException -> IO ()
+    displayErrors exQueue = withConsoleRegion Linear \cr -> 1 & fix \φ (errCnt :: Int) -> do
+      ex <- atomically $ readTQueue exQueue
+      setConsoleRegion cr $ "HTTP client errors: " <> T.pack (show errCnt)
+      withConsoleRegion Linear \cr' -> finishConsoleRegion cr' (show ex)
+      φ (succ errCnt)
+
     displayCount :: IORef Report -> IO ()
     displayCount ref = withConsoleRegion Linear (\r -> go r `finally` finalGo r)
       where
@@ -79,3 +100,6 @@ benchWithStreamingStats reqCount threadCount prod = do
         finalGo r = do
            n <- readIORef ref
            finishConsoleRegion r $ formatReport n
+
+data ErrorSummary
+  = ErrorSummary Int (Maybe SomeException)
